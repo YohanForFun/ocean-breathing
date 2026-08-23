@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>海边呼吸</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif;
+    background: linear-gradient(180deg, #1a1030 0%, #4a2545 45%, #a8523f 75%, #e08a4c 100%);
+    color: #fdf3e7;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* 背景视频 */
+  #bg-video {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+  /* 暗色遮罩，保证文字可读 */
+  #overlay {
+    position: fixed; inset: 0; z-index: 1;
+    background:
+      radial-gradient(ellipse at 50% 45%, rgba(20, 8, 30, 0.10) 0%, rgba(20, 8, 30, 0.45) 100%),
+      linear-gradient(180deg, rgba(15, 8, 28, 0.35) 0%, rgba(15, 8, 28, 0.05) 40%, rgba(15, 8, 28, 0.45) 100%);
+  }
+
+  .layer { position: fixed; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+  /* ---------- 开始页 ---------- */
+  #start-screen { transition: opacity 1.2s ease; }
+  #start-screen.hidden { opacity: 0; pointer-events: none; }
+  .guide-line {
+    font-size: 22px; letter-spacing: 0.35em; text-indent: 0.35em;
+    color: rgba(253, 243, 231, 0.92);
+    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
+    margin-bottom: 56px;
+  }
+  #start-btn {
+    font-family: inherit;
+    font-size: 16px; letter-spacing: 0.3em; text-indent: 0.3em;
+    color: #fdf3e7;
+    background: rgba(253, 243, 231, 0.08);
+    border: 1px solid rgba(253, 243, 231, 0.45);
+    border-radius: 999px;
+    padding: 14px 44px;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    transition: background 0.4s ease, transform 0.4s ease;
+  }
+  #start-btn:hover { background: rgba(253, 243, 231, 0.18); transform: scale(1.04); }
+
+  /* ---------- 练习页 ---------- */
+  #session-screen { opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
+  #session-screen.active { opacity: 1; pointer-events: auto; }
+
+  #circle-wrap { position: relative; width: 340px; height: 340px; display: flex; align-items: center; justify-content: center; }
+  #breath-circle {
+    width: 200px; height: 200px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 32%,
+      rgba(255, 226, 180, 0.95) 0%,
+      rgba(255, 176, 122, 0.85) 38%,
+      rgba(232, 116, 90, 0.55) 70%,
+      rgba(190, 90, 100, 0.25) 100%);
+    box-shadow:
+      0 0 60px 18px rgba(255, 170, 110, 0.35),
+      0 0 140px 60px rgba(255, 140, 90, 0.15);
+    transform: scale(1);
+    will-change: transform;
+  }
+  #phase-text {
+    position: absolute;
+    font-size: 26px; letter-spacing: 0.5em; text-indent: 0.5em;
+    color: rgba(60, 25, 35, 0.85);
+    transition: opacity 0.45s ease;
+    pointer-events: none;
+  }
+  #round-counter {
+    position: fixed; top: 28px; right: 36px;
+    font-size: 13px; letter-spacing: 0.25em;
+    color: rgba(253, 243, 231, 0.55);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.4);
+  }
+  #mute-btn {
+    position: fixed; top: 22px; left: 32px;
+    font-family: inherit; font-size: 13px; letter-spacing: 0.2em;
+    color: rgba(253, 243, 231, 0.55);
+    background: none; border: none; cursor: pointer;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.4);
+    transition: color 0.3s ease;
+  }
+  #mute-btn:hover { color: rgba(253, 243, 231, 0.9); }
+  #end-btn {
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+    font-family: inherit; font-size: 13px; letter-spacing: 0.3em; text-indent: 0.3em;
+    color: rgba(253, 243, 231, 0.5);
+    background: none; border: none; cursor: pointer;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.4);
+    transition: color 0.3s ease;
+  }
+  #end-btn:hover { color: rgba(253, 243, 231, 0.9); }
+
+  #session-hint {
+    position: fixed; bottom: 92px; left: 50%; transform: translateX(-50%);
+    font-size: 13px; letter-spacing: 0.2em;
+    color: rgba(253, 243, 231, 0.4);
+    transition: opacity 2s ease;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<video id="bg-video" src="sunset-palm.mp4" autoplay muted loop playsinline></video>
+<div id="overlay"></div>
+
+<!-- 开始页 -->
+<div class="layer" id="start-screen">
+  <div class="guide-line">跟着圆，慢慢呼吸</div>
+  <button id="start-btn">开始呼吸</button>
+</div>
+
+<!-- 练习页 -->
+<div class="layer" id="session-screen">
+  <div id="circle-wrap">
+    <div id="breath-circle"></div>
+    <div id="phase-text">吸气</div>
+  </div>
+  <div id="round-counter"></div>
+  <div id="session-hint">吸气时圆变大，呼气时圆变小</div>
+  <button id="mute-btn">声音 · 开</button>
+  <button id="end-btn">结束</button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ================= 配置 ================= */
+  const INHALE_MS = 4000;   // 吸气 4 秒
+  const EXHALE_MS = 6000;   // 呼气 6 秒
+  const SCALE_MIN = 1.0;
+  const SCALE_MAX = 1.5;
+  const EASE = "cubic-bezier(0.37, 0, 0.63, 1)"; // ease-in-out，起止柔和
+
+  /* ================= 状态 ================= */
+  const S = {
+    running: false,
+    phase: "in",          // 'in' | 'out'
+    phaseStart: 0,
+    rounds: 0,
+    muted: false,
+    cueCount: 0,
+    rafId: null,
+    audio: null,          // { ctx, master, oceanNodes[] }
+  };
+
+  /* ================= DOM ================= */
+  const el = {};
+  function initDom() {
+    el.startScreen = document.getElementById("start-screen");
+    el.sessionScreen = document.getElementById("session-screen");
+    el.circle = document.getElementById("breath-circle");
+    el.phaseText = document.getElementById("phase-text");
+    el.counter = document.getElementById("round-counter");
+    el.hint = document.getElementById("session-hint");
+    el.startBtn = document.getElementById("start-btn");
+    el.muteBtn = document.getElementById("mute-btn");
+    el.endBtn = document.getElementById("end-btn");
+    el.video = document.getElementById("bg-video");
+
+    el.startBtn.addEventListener("click", startSession);
+    el.endBtn.addEventListener("click", endSession);
+    el.muteBtn.addEventListener("click", toggleMute);
+  }
+
+  /* ================= 音频：合成海浪 + 提示音 ================= */
+  function createAudio() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    const ctx = new AC();
+    const master = ctx.createGain();
+    master.gain.value = S.muted ? 0 : 1;
+    master.connect(ctx.destination);
+
+    /* 海浪底层：棕噪声 + 低通 + 缓慢起伏 */
+    const len = ctx.sampleRate * 4;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      const white = Math.random() * 2 - 1;
+      last = (last + 0.02 * white) / 1.02;
+      d[i] = last * 3.2;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 420; lp.Q.value = 0.4;
+    const g = ctx.createGain(); g.gain.value = 0.22;
+    // 浪涌：约 11 秒一个周期的音量起伏
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.09;
+    const lfoG = ctx.createGain(); lfoG.gain.value = 0.13;
+    lfo.connect(lfoG); lfoG.connect(g.gain);
+    src.connect(lp); lp.connect(g); g.connect(master);
+    src.start(); lfo.start();
+
+    /* 浪花高频层：白噪声 + 带通，错相起伏 */
+    const buf2 = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d2 = buf2.getChannelData(0);
+    for (let i = 0; i < len; i++) d2[i] = Math.random() * 2 - 1;
+    const src2 = ctx.createBufferSource();
+    src2.buffer = buf2; src2.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass"; bp.frequency.value = 1400; bp.Q.value = 0.6;
+    const g2 = ctx.createGain(); g2.gain.value = 0.015;
+    const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.09;
+    const lfoG2 = ctx.createGain(); lfoG2.gain.value = 0.012;
+    const phase2 = ctx.createDelay(); // 用延迟错开相位，浪先于声
+    lfo2.connect(lfoG2); lfoG2.connect(g2.gain);
+    src2.connect(bp); bp.connect(g2); g2.connect(master);
+    src2.start(); lfo2.start();
+
+    return { ctx: ctx, master: master, nodes: [src, lfo, src2, lfo2] };
+  }
+
+  /* 换气提示音：吸气高一点，呼气低一点，都很轻 */
+  function playCue(kind) {
+    S.cueCount++;
+    if (!S.audio || S.muted) return;
+    const ctx = S.audio.ctx;
+    if (ctx.state === "suspended") { ctx.resume(); }
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = kind === "in" ? 523.25 : 392.0; // C5 / G4
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.10, t + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    osc.connect(g); g.connect(S.audio.master);
+    osc.start(t); osc.stop(t + 1.5);
+  }
+
+  /* ================= 呼吸状态机 ================= */
+  function phaseDuration(phase) { return phase === "in" ? INHALE_MS : EXHALE_MS; }
+
+  function enterPhase(phase, now) {
+    S.phase = phase;
+    S.phaseStart = now;
+    const dur = phaseDuration(phase);
+    // 圆：吸气放大、呼气缩小，时长与阶段同步
+    el.circle.style.transition = "transform " + dur + "ms " + EASE;
+    el.circle.style.transform = "scale(" + (phase === "in" ? SCALE_MAX : SCALE_MIN) + ")";
+    // 阶段字：淡出换字再淡入
+    el.phaseText.style.opacity = "0";
+    setTimeout(function () {
+      el.phaseText.textContent = phase === "in" ? "吸气" : "呼气";
+      el.phaseText.style.opacity = "1";
+    }, 450);
+    playCue(phase);
+    renderCounter();
+  }
+
+  function update(now) {
+    if (!S.running) return;
+    if (now - S.phaseStart >= phaseDuration(S.phase)) {
+      if (S.phase === "out") {
+        S.rounds++;
+        enterPhase("in", now);
+      } else {
+        enterPhase("out", now);
+      }
+    }
+    S.rafId = requestAnimationFrame(function () { update(performance.now()); });
+  }
+
+  function renderCounter() {
+    el.counter.textContent = S.rounds > 0 ? "第 " + S.rounds + " 轮" : "";
+  }
+
+  /* ================= 会话控制 ================= */
+  function startSession() {
+    if (S.running) return;
+    S.running = true;
+    S.rounds = 0;
+    if (!S.audio) S.audio = createAudio();
+    if (S.audio && S.audio.ctx.state === "suspended") S.audio.ctx.resume();
+
+    el.startScreen.classList.add("hidden");
+    el.sessionScreen.classList.add("active");
+    el.hint.style.opacity = "1";
+    setTimeout(function () { el.hint.style.opacity = "0"; }, 6000);
+
+    renderCounter();
+    enterPhase("in", performance.now());
+    S.rafId = requestAnimationFrame(function () { update(performance.now()); });
+  }
+
+  function endSession() {
+    if (!S.running) return;
+    S.running = false;
+    if (S.rafId) cancelAnimationFrame(S.rafId);
+    el.sessionScreen.classList.remove("active");
+    el.startScreen.classList.remove("hidden");
+    // 圆复位，供下一次使用
+    el.circle.style.transition = "transform 1.2s " + EASE;
+    el.circle.style.transform = "scale(" + SCALE_MIN + ")";
+  }
+
+  function toggleMute() {
+    S.muted = !S.muted;
+    if (S.audio) {
+      const t = S.audio.ctx.currentTime;
+      S.audio.master.gain.cancelScheduledValues(t);
+      S.audio.master.gain.linearRampToValueAtTime(S.muted ? 0 : 1, t + 0.4);
+    }
+    el.muteBtn.textContent = S.muted ? "声音 · 关" : "声音 · 开";
+  }
+
+  /* ================= 启动 ================= */
+  if (typeof document !== "undefined" && document.getElementById) {
+    initDom();
+  }
+})();
+</script>
+</body>
+</html>
