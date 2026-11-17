@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1a1030">
 <title>海边呼吸</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,7 +14,12 @@
     color: #fdf3e7;
     user-select: none;
     -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    overscroll-behavior: none;
   }
+  button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
   /* 背景视频 */
   #bg-video {
@@ -30,7 +36,17 @@
       linear-gradient(180deg, rgba(15, 8, 28, 0.35) 0%, rgba(15, 8, 28, 0.05) 40%, rgba(15, 8, 28, 0.45) 100%);
   }
 
-  .layer { position: fixed; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  :root {
+    /* 光团满吸气时的直径；手机竖屏/横屏都放得下 */
+    --d: min(275px, 68vw, calc(100vh - 230px));
+    --text-h: 92px;
+    --cy: calc(50% - var(--text-h) / 2);
+  }
+  @supports (height: 100dvh) {
+    :root { --d: min(275px, 68vw, calc(100dvh - 230px)); }
+  }
+
+  .layer { position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; }
 
   /* ---------- 开始页 ---------- */
   #start-screen { transition: opacity 1.2s ease; }
@@ -39,9 +55,15 @@
     font-size: 22px; letter-spacing: 0.35em; text-indent: 0.35em;
     color: rgba(253, 243, 231, 0.92);
     text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
-    margin-bottom: 56px;
+    margin-bottom: 14px;
   }
-  #start-btn {
+  .guide-sub {
+    font-size: 14px; letter-spacing: 0.25em; text-indent: 0.25em;
+    color: rgba(253, 243, 231, 0.62);
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55);
+    margin-bottom: 48px;
+  }
+  .pill-btn {
     font-family: inherit;
     font-size: 16px; letter-spacing: 0.3em; text-indent: 0.3em;
     color: #fdf3e7;
@@ -49,68 +71,198 @@
     border: 1px solid rgba(253, 243, 231, 0.45);
     border-radius: 999px;
     padding: 14px 44px;
+    min-height: 48px;
     cursor: pointer;
     backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     transition: background 0.4s ease, transform 0.4s ease;
   }
-  #start-btn:hover { background: rgba(253, 243, 231, 0.18); transform: scale(1.04); }
+  .pill-btn:hover { background: rgba(253, 243, 231, 0.18); transform: scale(1.04); }
+  .pill-btn:active { background: rgba(253, 243, 231, 0.22); }
 
-  /* ---------- 练习页 ---------- */
-  #session-screen { opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
-  #session-screen.active { opacity: 1; pointer-events: auto; }
-
-  #circle-wrap { position: relative; width: 340px; height: 340px; display: flex; align-items: center; justify-content: center; }
-  #breath-circle {
-    width: 200px; height: 200px; border-radius: 50%;
-    background: radial-gradient(circle at 38% 32%,
-      rgba(255, 226, 180, 0.95) 0%,
-      rgba(255, 176, 122, 0.85) 38%,
-      rgba(232, 116, 90, 0.55) 70%,
-      rgba(190, 90, 100, 0.25) 100%);
-    box-shadow:
-      0 0 60px 18px rgba(255, 170, 110, 0.35),
-      0 0 140px 60px rgba(255, 140, 90, 0.15);
-    transform: scale(1);
-    will-change: transform;
+  /* ---------- 光团（单独一层，用 screen 混合，像光一样融进夕阳） ---------- */
+  #orb-layer {
+    position: fixed; inset: 0; z-index: 2;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: 0;
+    transition: opacity 1.2s ease;
   }
-  #phase-text {
-    position: absolute;
-    font-size: 26px; letter-spacing: 0.5em; text-indent: 0.5em;
-    color: rgba(60, 25, 35, 0.85);
-    transition: opacity 0.45s ease;
+  #orb-layer.active { opacity: 1; }
+  #orb-layer.fading { opacity: 0; transition: opacity 3s ease; }
+  #orb-stage {
+    position: absolute; left: 50%; top: var(--cy);
+    width: var(--d); height: var(--d);
+    transform: translate(-50%, -50%);
+  }
+  /* 目标环：满吸气的大小 */
+  #target-ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 1px solid rgba(255, 236, 214, 0.34);
+    box-shadow: 0 0 18px rgba(255, 214, 170, 0.08), inset 0 0 18px rgba(255, 214, 170, 0.06);
+    transition: border-color 1s ease;
+  }
+  #orb {
+    position: absolute; inset: 0; border-radius: 50%;
+    transform: scale(0.4);
+    will-change: transform, opacity;
+  }
+  #orb > div { position: absolute; border-radius: 50%; }
+  .orb-halo {
+    inset: -45%;
+    background: radial-gradient(circle,
+      rgba(255, 206, 160, 0.38) 0%,
+      rgba(255, 172, 124, 0.22) 32%,
+      rgba(240, 130, 100, 0.06) 55%,
+      rgba(240, 130, 100, 0) 70%);
+  }
+  .orb-body {
+    inset: 0;
+    background: radial-gradient(circle at 50% 50%,
+      rgba(255, 244, 226, 0.58) 0%,
+      rgba(255, 222, 184, 0.44) 28%,
+      rgba(255, 190, 146, 0.30) 55%,
+      rgba(255, 166, 124, 0.20) 78%,
+      rgba(255, 196, 160, 0.16) 90%,
+      rgba(255, 150, 110, 0) 100%);
+    box-shadow: inset 0 0 36px rgba(255, 232, 205, 0.16), 0 0 40px rgba(255, 190, 140, 0.14);
+  }
+  .orb-core {
+    inset: 24%;
+    background: radial-gradient(circle,
+      rgba(255, 250, 240, 0.55) 0%,
+      rgba(255, 232, 200, 0.22) 45%,
+      rgba(255, 220, 180, 0) 100%);
+    filter: blur(6px);
+  }
+  .orb-shimmer {
+    inset: 8%;
+    background:
+      conic-gradient(from 0deg,
+        rgba(255, 240, 220, 0) 0deg, rgba(255, 240, 220, 0.20) 50deg,
+        rgba(255, 240, 220, 0) 110deg, rgba(255, 210, 170, 0.16) 190deg,
+        rgba(255, 210, 170, 0) 250deg, rgba(255, 236, 210, 0.18) 310deg,
+        rgba(255, 240, 220, 0) 360deg);
+    filter: blur(14px);
+    opacity: 0.8;
+    animation: shimmer-spin 26s linear infinite, shimmer-glow 7s ease-in-out infinite;
+    -webkit-mask: radial-gradient(circle, #000 35%, transparent 72%);
+            mask: radial-gradient(circle, #000 35%, transparent 72%);
+  }
+  @keyframes shimmer-spin { to { transform: rotate(360deg); } }
+  @keyframes shimmer-glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.95; } }
+
+  /* 呼气开始时一圈轻轻散开的涟漪 */
+  .ripple {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 1.5px solid rgba(255, 232, 205, 0.35);
+    box-shadow: 0 0 16px rgba(255, 210, 170, 0.18);
+    animation: ripple-out 2.4s ease-out forwards;
     pointer-events: none;
   }
-  #round-counter {
-    position: fixed; top: 28px; right: 36px;
-    font-size: 13px; letter-spacing: 0.25em;
-    color: rgba(253, 243, 231, 0.55);
-    text-shadow: 0 1px 8px rgba(0,0,0,0.4);
+  @keyframes ripple-out {
+    from { transform: scale(1); opacity: 0.85; }
+    to   { transform: scale(1.22); opacity: 0; }
   }
-  #mute-btn {
-    position: fixed; top: 22px; left: 32px;
-    font-family: inherit; font-size: 13px; letter-spacing: 0.2em;
-    color: rgba(253, 243, 231, 0.55);
-    background: none; border: none; cursor: pointer;
-    text-shadow: 0 1px 8px rgba(0,0,0,0.4);
-    transition: color 0.3s ease;
-  }
-  #mute-btn:hover { color: rgba(253, 243, 231, 0.9); }
-  #end-btn {
-    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
-    font-family: inherit; font-size: 13px; letter-spacing: 0.3em; text-indent: 0.3em;
-    color: rgba(253, 243, 231, 0.5);
-    background: none; border: none; cursor: pointer;
-    text-shadow: 0 1px 8px rgba(0,0,0,0.4);
-    transition: color 0.3s ease;
-  }
-  #end-btn:hover { color: rgba(253, 243, 231, 0.9); }
 
+  @media (prefers-reduced-motion: reduce) {
+    .orb-shimmer { animation: none; opacity: 0.35; }
+  }
+
+  /* ---------- 练习页 ---------- */
+  #session-screen { opacity: 0; pointer-events: none; transition: opacity 1.2s ease; display: block; padding: 0; }
+  #session-screen.active { opacity: 1; pointer-events: auto; }
+
+  #phase-block {
+    position: absolute; left: 0; right: 0;
+    top: calc(var(--cy) + var(--d) / 2 + 20px);
+    display: flex; flex-direction: column; align-items: center;
+    pointer-events: none;
+    transition: opacity 1.5s ease;
+  }
+  #phase-text {
+    font-size: 26px; letter-spacing: 0.5em; text-indent: 0.5em;
+    color: #fff7ec;
+    text-shadow: 0 0 14px rgba(20, 8, 24, 0.75), 0 1px 3px rgba(20, 8, 24, 0.7), 0 0 34px rgba(20, 8, 24, 0.45);
+    transition: opacity 0.45s ease;
+    line-height: 1.4;
+  }
+  #countdown {
+    margin-top: 6px;
+    font-size: 20px; letter-spacing: 0.1em;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 244, 230, 0.78);
+    text-shadow: 0 0 12px rgba(20, 8, 24, 0.75), 0 1px 3px rgba(20, 8, 24, 0.6);
+    min-height: 28px;
+    transition: opacity 0.3s ease;
+  }
+  #round-counter {
+    position: fixed;
+    top: calc(28px + env(safe-area-inset-top)); right: calc(24px + env(safe-area-inset-right));
+    font-size: 13px; letter-spacing: 0.25em;
+    color: rgba(253, 243, 231, 0.62);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.5);
+    line-height: 20px;
+  }
+  .ghost-btn {
+    font-family: inherit; font-size: 13px; letter-spacing: 0.25em;
+    color: rgba(253, 243, 231, 0.62);
+    background: none; border: none; cursor: pointer;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.5);
+    transition: color 0.3s ease;
+    min-height: 44px; min-width: 44px; padding: 12px 14px;
+  }
+  .ghost-btn:hover, .ghost-btn:active { color: rgba(253, 243, 231, 0.95); }
+  #mute-btn {
+    position: fixed;
+    top: calc(16px + env(safe-area-inset-top)); left: calc(14px + env(safe-area-inset-left));
+  }
+  #end-btn {
+    position: fixed;
+    bottom: calc(22px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+    letter-spacing: 0.3em; text-indent: 0.3em; padding: 12px 28px;
+  }
   #session-hint {
-    position: fixed; bottom: 92px; left: 50%; transform: translateX(-50%);
+    position: fixed; bottom: calc(76px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
     font-size: 13px; letter-spacing: 0.2em;
-    color: rgba(253, 243, 231, 0.4);
+    color: rgba(253, 243, 231, 0.6);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.55);
     transition: opacity 2s ease;
     white-space: nowrap;
+    opacity: 0;
+  }
+
+  /* ---------- 结束页 ---------- */
+  #ending-screen { opacity: 0; pointer-events: none; transition: opacity 1.6s ease; }
+  #ending-screen.active { opacity: 1; pointer-events: auto; }
+  .ending-title {
+    font-size: 24px; letter-spacing: 0.3em; text-indent: 0.3em;
+    color: rgba(255, 247, 236, 0.95);
+    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0,0,0,0.4);
+    margin-bottom: 14px;
+  }
+  .ending-sub {
+    font-size: 15px; letter-spacing: 0.2em; text-indent: 0.2em; line-height: 1.8;
+    color: rgba(255, 246, 236, 0.85);
+    text-shadow: 0 0 12px rgba(20, 8, 24, 0.8), 0 1px 3px rgba(20, 8, 24, 0.6);
+    margin-bottom: 40px;
+    min-height: 26px;
+  }
+  .ending-actions { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-bottom: 18px; }
+  .ending-actions .pill-btn { padding: 14px 30px; letter-spacing: 0.2em; text-indent: 0.2em; }
+
+  @media (max-width: 480px) {
+    .guide-line { font-size: 20px; letter-spacing: 0.3em; text-indent: 0.3em; }
+    .ending-title { font-size: 22px; }
+    .ending-actions { flex-direction: column; align-items: stretch; width: min(280px, 80vw); }
+  }
+  @media (max-height: 480px) {
+    :root { --text-h: 80px; }
+    #phase-text { font-size: 22px; }
+    #countdown { font-size: 17px; margin-top: 2px; }
+    #phase-block { top: calc(var(--cy) + var(--d) / 2 + 12px); }
+    #session-hint { display: none; }
+    .guide-sub, .ending-sub { margin-bottom: 24px; }
   }
 </style>
 </head>
@@ -119,22 +271,47 @@
 <video id="bg-video" src="sunset-palm.mp4" autoplay muted loop playsinline></video>
 <div id="overlay"></div>
 
+<!-- 光团层 -->
+<div id="orb-layer" aria-hidden="true">
+  <div id="orb-stage">
+    <div id="target-ring"></div>
+    <div id="orb">
+      <div class="orb-halo"></div>
+      <div class="orb-body"></div>
+      <div class="orb-shimmer"></div>
+      <div class="orb-core"></div>
+    </div>
+  </div>
+</div>
+
 <!-- 开始页 -->
 <div class="layer" id="start-screen">
-  <div class="guide-line">跟着圆，慢慢呼吸</div>
-  <button id="start-btn">开始呼吸</button>
+  <div class="guide-line">跟着光，慢慢呼吸</div>
+  <div class="guide-sub">大约三分钟，随时可以停下</div>
+  <button id="start-btn" class="pill-btn">开始呼吸</button>
 </div>
 
 <!-- 练习页 -->
 <div class="layer" id="session-screen">
-  <div id="circle-wrap">
-    <div id="breath-circle"></div>
+  <div id="phase-block">
     <div id="phase-text">吸气</div>
+    <div id="countdown"></div>
   </div>
   <div id="round-counter"></div>
-  <div id="session-hint">吸气时圆变大，呼气时圆变小</div>
-  <button id="mute-btn">声音 · 开</button>
-  <button id="end-btn">结束</button>
+  <div id="session-hint">先跟着你现在的节奏，之后会一点点放慢</div>
+  <button id="mute-btn" class="ghost-btn">声音 · 开</button>
+  <button id="end-btn" class="ghost-btn">结束</button>
+</div>
+
+<!-- 结束页 -->
+<div class="layer" id="ending-screen">
+  <div class="ending-title">现在感觉怎么样？</div>
+  <div class="ending-sub" id="ending-sub">你陪自己安静地呼吸了一会儿</div>
+  <div class="ending-actions" id="ending-actions">
+    <button id="better-btn" class="pill-btn">好多了</button>
+    <button id="again-btn" class="pill-btn">还想再来几轮</button>
+  </div>
+  <button id="home-btn" class="ghost-btn">回到开始</button>
 </div>
 
 <script>
@@ -142,53 +319,107 @@
   "use strict";
 
   /* ================= 配置 ================= */
-  const INHALE_MS = 4000;   // 吸气 4 秒
-  const EXHALE_MS = 6000;   // 呼气 6 秒
-  const SCALE_MIN = 1.0;
-  const SCALE_MAX = 1.5;
-  const EASE = "cubic-bezier(0.37, 0, 0.63, 1)"; // ease-in-out，起止柔和
+  // 起始节奏：接近紧张时偏快的呼吸
+  const INHALE_START_MS = 2500;
+  const EXHALE_START_MS = 3000;
+  // 目标节奏：吸 4 秒、呼 6 秒
+  const INHALE_MS = 4000;
+  const EXHALE_MS = 6000;
+  // 用几轮从起始节奏慢慢拉长到目标节奏（第 RAMP_ROUNDS+1 轮起保持目标节奏）
+  const RAMP_ROUNDS = 5;
+  // 一次练习的时长；到点后会把当前这口气呼完再收尾
+  const SESSION_MS = 3 * 60 * 1000;
+  // 「还想再来几轮」再续多久（按 4/6 节奏）
+  const EXTRA_MS = 2 * 60 * 1000;
+  // 光团大小：呼气末 = SCALE_MIN × 满吸气大小（0.4 → 2.5 倍变化）
+  const SCALE_MIN = 0.4;
+  const SCALE_MAX = 1.0;
+  // 声音
+  const CUE_GAIN = 0.035;          // 换气提示音，很轻
+  const WAVE_LOW = 0.07, WAVE_HIGH = 0.30;     // 浪声音量：退潮 / 涌起
+  const FILTER_LOW = 280, FILTER_HIGH = 950;   // 浪声低通：闭合 / 打开（Hz）
+  const FOAM_BASE = 0.004, FOAM_PEAK = 0.030;  // 呼气开头的浪花沙沙声
+  const WAVE_IDLE = 0.12, FILTER_IDLE = 420;   // 不在练习时的平静底噪
+
+  // 调试：?session=20 把练习缩短为 20 秒（「再来」也用这个时长）
+  const params = new URLSearchParams(location.search);
+  const dbgSession = parseFloat(params.get("session"));
+  const sessionMsFirst = dbgSession > 0 ? dbgSession * 1000 : SESSION_MS;
+  const sessionMsExtra = dbgSession > 0 ? dbgSession * 1000 : EXTRA_MS;
 
   /* ================= 状态 ================= */
   const S = {
     running: false,
-    phase: "in",          // 'in' | 'out'
-    phaseStart: 0,
-    rounds: 0,
+    phase: "in",
+    phaseStart: 0,      // 理论上的阶段起点（不累积误差）
+    phaseDur: 0,
+    roundIdx: 0,        // 当前是第几轮（从 0 起）
+    rounds: 0,          // 已完成轮数
+    noRamp: false,
+    sessionStart: 0,
+    sessionMs: sessionMsFirst,
     muted: false,
     cueCount: 0,
     rafId: null,
-    audio: null,          // { ctx, master, oceanNodes[] }
+    scale: SCALE_MIN,
+    lastCount: null,
+    audio: null,
+    wakeLock: null,
+    log: [],            // 测试用：每个阶段的开始与音频排程
   };
+  window.__breath = { S: S, cfg: { INHALE_START_MS, EXHALE_START_MS, INHALE_MS, EXHALE_MS, RAMP_ROUNDS, SCALE_MIN, SCALE_MAX, WAVE_LOW, WAVE_HIGH } };
 
   /* ================= DOM ================= */
   const el = {};
   function initDom() {
-    el.startScreen = document.getElementById("start-screen");
-    el.sessionScreen = document.getElementById("session-screen");
-    el.circle = document.getElementById("breath-circle");
-    el.phaseText = document.getElementById("phase-text");
-    el.counter = document.getElementById("round-counter");
-    el.hint = document.getElementById("session-hint");
-    el.startBtn = document.getElementById("start-btn");
-    el.muteBtn = document.getElementById("mute-btn");
-    el.endBtn = document.getElementById("end-btn");
-    el.video = document.getElementById("bg-video");
-
+    ["start-screen", "session-screen", "ending-screen", "orb-layer", "orb", "target-ring", "phase-text", "phase-block",
+     "countdown", "round-counter", "session-hint", "start-btn", "mute-btn", "end-btn", "better-btn", "again-btn",
+     "home-btn", "ending-sub", "ending-actions", "bg-video"].forEach(function (id) {
+      el[id.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); })] = document.getElementById(id);
+    });
     el.startBtn.addEventListener("click", startSession);
     el.endBtn.addEventListener("click", endSession);
     el.muteBtn.addEventListener("click", toggleMute);
+    el.betterBtn.addEventListener("click", feelBetter);
+    el.againBtn.addEventListener("click", againRounds);
+    el.homeBtn.addEventListener("click", backToStart);
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible" && S.running) requestWakeLock();
+    });
+    // iOS 有时会暂停背景视频，回到页面时再播一下
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible" && el.bgVideo && el.bgVideo.paused) {
+        const p = el.bgVideo.play(); if (p && p.catch) p.catch(function () {});
+      }
+    });
+  }
+
+  /* ================= 屏幕常亮 ================= */
+  function requestWakeLock() {
+    try {
+      if (!("wakeLock" in navigator) || S.wakeLock) return;
+      navigator.wakeLock.request("screen").then(function (lock) {
+        S.wakeLock = lock;
+        lock.addEventListener("release", function () { S.wakeLock = null; });
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  function releaseWakeLock() {
+    try { if (S.wakeLock) S.wakeLock.release().catch(function () {}); } catch (e) {}
+    S.wakeLock = null;
   }
 
   /* ================= 音频：合成海浪 + 提示音 ================= */
   function createAudio() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
-    const ctx = new AC();
+    let ctx;
+    try { ctx = new AC(); } catch (e) { return null; }
     const master = ctx.createGain();
     master.gain.value = S.muted ? 0 : 1;
     master.connect(ctx.destination);
 
-    /* 海浪底层：棕噪声 + 低通 + 缓慢起伏 */
+    /* 海浪底层：棕噪声 + 低通，音量和滤波跟着呼吸排程 */
     const len = ctx.sampleRate * 4;
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -201,32 +432,83 @@
     const src = ctx.createBufferSource();
     src.buffer = buf; src.loop = true;
     const lp = ctx.createBiquadFilter();
-    lp.type = "lowpass"; lp.frequency.value = 420; lp.Q.value = 0.4;
-    const g = ctx.createGain(); g.gain.value = 0.22;
-    // 浪涌：约 11 秒一个周期的音量起伏
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.09;
-    const lfoG = ctx.createGain(); lfoG.gain.value = 0.13;
-    lfo.connect(lfoG); lfoG.connect(g.gain);
+    lp.type = "lowpass"; lp.frequency.value = FILTER_IDLE; lp.Q.value = 0.4;
+    const g = ctx.createGain(); g.gain.value = WAVE_IDLE;
     src.connect(lp); lp.connect(g); g.connect(master);
-    src.start(); lfo.start();
+    src.start();
 
-    /* 浪花高频层：白噪声 + 带通，错相起伏 */
+    /* 浪花高频层：白噪声 + 带通，呼气开头沙沙地散开 */
     const buf2 = ctx.createBuffer(1, len, ctx.sampleRate);
     const d2 = buf2.getChannelData(0);
     for (let i = 0; i < len; i++) d2[i] = Math.random() * 2 - 1;
     const src2 = ctx.createBufferSource();
     src2.buffer = buf2; src2.loop = true;
     const bp = ctx.createBiquadFilter();
-    bp.type = "bandpass"; bp.frequency.value = 1400; bp.Q.value = 0.6;
-    const g2 = ctx.createGain(); g2.gain.value = 0.015;
-    const lfo2 = ctx.createOscillator(); lfo2.frequency.value = 0.09;
-    const lfoG2 = ctx.createGain(); lfoG2.gain.value = 0.012;
-    const phase2 = ctx.createDelay(); // 用延迟错开相位，浪先于声
-    lfo2.connect(lfoG2); lfoG2.connect(g2.gain);
+    bp.type = "bandpass"; bp.frequency.value = 1600; bp.Q.value = 0.6;
+    const g2 = ctx.createGain(); g2.gain.value = FOAM_BASE;
     src2.connect(bp); bp.connect(g2); g2.connect(master);
-    src2.start(); lfo2.start();
+    src2.start();
 
-    return { ctx: ctx, master: master, nodes: [src, lfo, src2, lfo2] };
+    return { ctx: ctx, master: master, wave: g, filter: lp, foam: g2 };
+  }
+
+  function ease(p) { return 0.5 - 0.5 * Math.cos(Math.PI * p); }
+
+  /* 在 [aStart, aStart+dur] 上按正弦缓动从 from 走到 to；已过去的部分直接跳到当前值 */
+  function scheduleCurve(param, from, to, aStart, dur, now) {
+    const STEPS = 12;
+    const valAt = function (t) {
+      const p = Math.min(1, Math.max(0, (t - aStart) / dur));
+      return from + (to - from) * ease(p);
+    };
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(valAt(now), now);
+    for (let k = 1; k <= STEPS; k++) {
+      const t = aStart + dur * k / STEPS;
+      if (t > now + 0.001) param.linearRampToValueAtTime(valAt(t), t);
+    }
+  }
+
+  function scheduleWaves(phase, durMs, lagMs, realign) {
+    const A = S.audio;
+    if (!A) return null;
+    const ctx = A.ctx;
+    const now = ctx.currentTime;
+    const aStart = now - lagMs / 1000;   // 这一阶段在音频时钟上的真实起点
+    const dur = durMs / 1000;
+    try {
+      if (phase === "in") {
+        scheduleCurve(A.wave.gain, WAVE_LOW, WAVE_HIGH, aStart, dur, now);
+        scheduleCurve(A.filter.frequency, FILTER_LOW, FILTER_HIGH, aStart, dur, now);
+        // 吸气时浪花层只轻轻抬一点
+        scheduleCurve(A.foam.gain, FOAM_BASE, FOAM_BASE * 2, aStart, dur, now);
+      } else {
+        scheduleCurve(A.wave.gain, WAVE_HIGH, WAVE_LOW, aStart, dur, now);
+        scheduleCurve(A.filter.frequency, FILTER_HIGH, FILTER_LOW, aStart, dur, now);
+        // 浪退时的沙沙声：开头涌起，再慢慢散去
+        const fg = A.foam.gain;
+        if (realign && now - aStart > 0.6) return { audioStart: aStart, audioEnd: aStart + dur, ctxNow: now, ctxState: ctx.state };
+        fg.cancelScheduledValues(now);
+        fg.setValueAtTime(fg.value, now);
+        const peakT = Math.max(now + 0.05, aStart + 0.45);
+        fg.linearRampToValueAtTime(FOAM_PEAK, peakT);
+        fg.setTargetAtTime(FOAM_BASE, peakT, Math.max(0.3, dur * 0.28));
+      }
+    } catch (e) {}
+    return { audioStart: aStart, audioEnd: aStart + dur, ctxNow: now, ctxState: ctx.state };
+  }
+
+  function settleWaves(seconds) {
+    const A = S.audio;
+    if (!A) return;
+    const now = A.ctx.currentTime;
+    try {
+      [[A.wave.gain, WAVE_IDLE], [A.filter.frequency, FILTER_IDLE], [A.foam.gain, FOAM_BASE]].forEach(function (pv) {
+        pv[0].cancelScheduledValues(now);
+        pv[0].setValueAtTime(pv[0].value, now);
+        pv[0].linearRampToValueAtTime(pv[1], now + seconds);
+      });
+    } catch (e) {}
   }
 
   /* 换气提示音：吸气高一点，呼气低一点，都很轻 */
@@ -241,84 +523,209 @@
     const g = ctx.createGain();
     const t = ctx.currentTime;
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.10, t + 0.25);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+    g.gain.linearRampToValueAtTime(CUE_GAIN, t + 0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
     osc.connect(g); g.connect(S.audio.master);
-    osc.start(t); osc.stop(t + 1.5);
+    osc.start(t); osc.stop(t + 1.9);
   }
 
-  /* ================= 呼吸状态机 ================= */
-  function phaseDuration(phase) { return phase === "in" ? INHALE_MS : EXHALE_MS; }
+  /* ================= 呼吸节奏 ================= */
+  function durationsFor(roundIdx) {
+    if (S.noRamp) return { in: INHALE_MS, out: EXHALE_MS };
+    const f = Math.min(1, roundIdx / RAMP_ROUNDS);
+    const r = function (a, b) { return Math.round((a + (b - a) * f) / 50) * 50; };
+    return { in: r(INHALE_START_MS, INHALE_MS), out: r(EXHALE_START_MS, EXHALE_MS) };
+  }
 
-  function enterPhase(phase, now) {
+  function enterPhase(phase, startT, now) {
     S.phase = phase;
-    S.phaseStart = now;
-    const dur = phaseDuration(phase);
-    // 圆：吸气放大、呼气缩小，时长与阶段同步
-    el.circle.style.transition = "transform " + dur + "ms " + EASE;
-    el.circle.style.transform = "scale(" + (phase === "in" ? SCALE_MAX : SCALE_MIN) + ")";
+    S.phaseStart = startT;
+    const durs = durationsFor(S.roundIdx);
+    S.phaseDur = durs[phase];
     // 阶段字：淡出换字再淡入
     el.phaseText.style.opacity = "0";
     setTimeout(function () {
       el.phaseText.textContent = phase === "in" ? "吸气" : "呼气";
       el.phaseText.style.opacity = "1";
-    }, 450);
+    }, 380);
+    if (phase === "out") spawnRipple();
     playCue(phase);
+    const sched = scheduleWaves(phase, S.phaseDur, now - startT);
+    S.cur = sched; S.lastAlignCheck = now;
+    S.log.push({ phase: phase, round: S.roundIdx, dur: S.phaseDur, start: startT, detectedAt: now, audio: sched });
     renderCounter();
   }
 
-  function update(now) {
+  function spawnRipple() {
+    const r = document.createElement("div");
+    r.className = "ripple";
+    el.orb.parentNode.insertBefore(r, el.orb);
+    setTimeout(function () { r.remove(); }, 2600);
+  }
+
+  function renderOrb(now) {
+    const p = Math.min(1, Math.max(0, (now - S.phaseStart) / S.phaseDur));
+    const e = ease(p);
+    const s = S.phase === "in" ? SCALE_MIN + (SCALE_MAX - SCALE_MIN) * e : SCALE_MAX - (SCALE_MAX - SCALE_MIN) * e;
+    S.scale = s;
+    // 吸满时更亮一点
+    const glow = 0.72 + 0.28 * (s - SCALE_MIN) / (SCALE_MAX - SCALE_MIN);
+    el.orb.style.transform = "scale(" + s.toFixed(4) + ")";
+    el.orb.style.opacity = glow.toFixed(3);
+    // 倒数：4,3,2,1 / 6..1
+    const remain = Math.ceil((S.phaseDur - (now - S.phaseStart)) / 1000 - 1e-6);
+    const c = Math.max(1, remain);
+    if (c !== S.lastCount) { S.lastCount = c; el.countdown.textContent = String(c); }
+  }
+
+  function update() {
     if (!S.running) return;
-    if (now - S.phaseStart >= phaseDuration(S.phase)) {
-      if (S.phase === "out") {
-        S.rounds++;
-        enterPhase("in", now);
+    const now = performance.now();
+    // 页面在后台太久：直接从当前时刻重新起一口吸气
+    if (now - S.phaseStart > S.phaseDur + 3000) {
+      S.roundIdx = S.rounds;
+      enterPhase("in", now, now);
+    }
+    while (S.running && now - S.phaseStart >= S.phaseDur) {
+      const next = S.phaseStart + S.phaseDur;
+      if (S.phase === "in") {
+        enterPhase("out", next, now);
       } else {
-        enterPhase("out", now);
+        S.rounds++;
+        S.roundIdx++;
+        if (next - S.sessionStart >= S.sessionMs) { finishSession(next); return; }
+        enterPhase("in", next, now);
       }
     }
-    S.rafId = requestAnimationFrame(function () { update(performance.now()); });
+    realignAudio(now);
+    renderOrb(now);
+    S.rafId = requestAnimationFrame(update);
+  }
+
+  /* 音频时钟刚启动时可能会停顿一下；若排程和画面差出 40ms 以上，就按当前阶段重新对齐 */
+  function realignAudio(now) {
+    if (!S.audio || !S.cur || now - S.lastAlignCheck < 500) return;
+    S.lastAlignCheck = now;
+    const expected = S.audio.ctx.currentTime - (now - S.phaseStart) / 1000;
+    if (Math.abs(expected - S.cur.audioStart) > 0.04) {
+      const sched = scheduleWaves(S.phase, S.phaseDur, now - S.phaseStart, true);
+      if (sched) { S.cur = sched; S.realigns = (S.realigns || 0) + 1; }
+    }
   }
 
   function renderCounter() {
-    el.counter.textContent = S.rounds > 0 ? "第 " + S.rounds + " 轮" : "";
+    el.roundCounter.textContent = S.rounds > 0 ? "第 " + S.rounds + " 轮" : "";
   }
 
   /* ================= 会话控制 ================= */
+  function ensureAudio() {
+    if (!S.audio) S.audio = createAudio();
+    if (S.audio && S.audio.ctx.state === "suspended") { try { S.audio.ctx.resume(); } catch (e) {} }
+  }
+
+  function beginBreathing(noRamp, sessionMs) {
+    S.running = true;
+    S.noRamp = noRamp;
+    S.sessionMs = sessionMs;
+    S.lastCount = null;
+    const now = performance.now();
+    S.sessionStart = now;
+    el.orbLayer.classList.remove("fading");
+    el.orbLayer.classList.add("active");
+    el.sessionScreen.classList.add("active");
+    el.phaseBlock.style.opacity = "1";
+    requestWakeLock();
+    enterPhase("in", now, now);
+    realignAudio(now);
+    renderOrb(now);
+    S.rafId = requestAnimationFrame(update);
+  }
+
+  /* 音频时钟刚启动时可能会停顿一下；若排程和画面差出 40ms 以上，就按当前阶段重新对齐 */
+  function realignAudio(now) {
+    if (!S.audio || !S.cur || now - S.lastAlignCheck < 500) return;
+    S.lastAlignCheck = now;
+    const expected = S.audio.ctx.currentTime - (now - S.phaseStart) / 1000;
+    if (Math.abs(expected - S.cur.audioStart) > 0.04) {
+      const sched = scheduleWaves(S.phase, S.phaseDur, now - S.phaseStart, true);
+      if (sched) { S.cur = sched; S.realigns = (S.realigns || 0) + 1; }
+    }
+  }
+
   function startSession() {
     if (S.running) return;
-    S.running = true;
     S.rounds = 0;
-    if (!S.audio) S.audio = createAudio();
-    if (S.audio && S.audio.ctx.state === "suspended") S.audio.ctx.resume();
-
+    S.roundIdx = 0;
+    ensureAudio();
     el.startScreen.classList.add("hidden");
-    el.sessionScreen.classList.add("active");
-    el.hint.style.opacity = "1";
-    setTimeout(function () { el.hint.style.opacity = "0"; }, 6000);
+    el.sessionHint.style.opacity = "1";
+    clearTimeout(S.hintTimer);
+    S.hintTimer = setTimeout(function () { el.sessionHint.style.opacity = "0"; }, 9000);
+    beginBreathing(false, sessionMsFirst);
+  }
 
-    renderCounter();
-    enterPhase("in", performance.now());
-    S.rafId = requestAnimationFrame(function () { update(performance.now()); });
+  // 到点：当前这口气已经呼完，光慢慢暗下去，再出现结束页
+  function finishSession() {
+    S.running = false;
+    if (S.rafId) cancelAnimationFrame(S.rafId);
+    el.orb.style.transform = "scale(" + SCALE_MIN + ")";
+    el.countdown.textContent = "";
+    el.phaseBlock.style.opacity = "0";
+    el.sessionHint.style.opacity = "0";
+    el.orbLayer.classList.add("fading");
+    settleWaves(4);
+    S.log.push({ phase: "finish", at: performance.now() });
+    clearTimeout(S.endTimer);
+    S.endTimer = setTimeout(function () {
+      el.sessionScreen.classList.remove("active");
+      el.orbLayer.classList.remove("active");
+      el.endingSub.textContent = "你陪自己安静地呼吸了 " + S.rounds + " 轮";
+      el.endingActions.style.display = "";
+      el.endingScreen.classList.add("active");
+    }, 2200);
+  }
+
+  function feelBetter() {
+    el.endingSub.textContent = "真好。慢慢来，不用急着起身";
+    el.endingActions.style.display = "none";
+    releaseWakeLock();
+  }
+
+  function againRounds() {
+    el.endingScreen.classList.remove("active");
+    ensureAudio();
+    beginBreathing(true, sessionMsExtra);
+  }
+
+  function backToStart() {
+    el.endingScreen.classList.remove("active");
+    el.startScreen.classList.remove("hidden");
+    releaseWakeLock();
   }
 
   function endSession() {
     if (!S.running) return;
     S.running = false;
     if (S.rafId) cancelAnimationFrame(S.rafId);
+    clearTimeout(S.endTimer);
     el.sessionScreen.classList.remove("active");
+    el.orbLayer.classList.remove("active");
+    el.sessionHint.style.opacity = "0";
     el.startScreen.classList.remove("hidden");
-    // 圆复位，供下一次使用
-    el.circle.style.transition = "transform 1.2s " + EASE;
-    el.circle.style.transform = "scale(" + SCALE_MIN + ")";
+    settleWaves(1.5);
+    releaseWakeLock();
+    // 光团复位，供下一次使用
+    setTimeout(function () { if (!S.running) el.orb.style.transform = "scale(" + SCALE_MIN + ")"; }, 1200);
   }
 
   function toggleMute() {
     S.muted = !S.muted;
     if (S.audio) {
       const t = S.audio.ctx.currentTime;
-      S.audio.master.gain.cancelScheduledValues(t);
-      S.audio.master.gain.linearRampToValueAtTime(S.muted ? 0 : 1, t + 0.4);
+      const mg = S.audio.master.gain;
+      mg.cancelScheduledValues(t);
+      mg.setValueAtTime(mg.value, t);
+      mg.linearRampToValueAtTime(S.muted ? 0 : 1, t + 0.4);
     }
     el.muteBtn.textContent = S.muted ? "声音 · 关" : "声音 · 开";
   }
